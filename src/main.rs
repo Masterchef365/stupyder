@@ -281,7 +281,7 @@ impl eframe::App for TemplateApp {
                 ui.text_edit_singleline(&mut self.save_data.file_name);
             });
             ScrollArea::vertical()
-                .auto_shrink(true)
+                .auto_shrink(false)
                 .id_salt("code")
                 .show(ui, |ui| {
                     resp = Some(code_editor::code_editor_with_autoindent(

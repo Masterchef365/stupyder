@@ -1,3 +1,2 @@
 [build]
 filehash = false
-minify = "never" # can be one of: never, on_release, always
