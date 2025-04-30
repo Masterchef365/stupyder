@@ -217,7 +217,7 @@ impl eframe::App for TemplateApp {
             });
         });
 
-        egui::SidePanel::left("output").resizable(true).show(ctx, |ui| {
+        egui::SidePanel::right("output").resizable(true).show(ctx, |ui| {
             let root = EguiBackend::new(&*ui).into_drawing_area();
             root.fill(&WHITE).unwrap();
             let mut chart = ChartBuilder::on(&root)
@@ -228,7 +228,7 @@ impl eframe::App for TemplateApp {
                 .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)
                 .unwrap();
 
-            //chart.configure_mesh().draw().unwrap();
+            chart.configure_mesh().draw().unwrap();
 
             chart
                 .draw_series(LineSeries::new(
@@ -247,6 +247,9 @@ impl eframe::App for TemplateApp {
                 .unwrap();
 
             root.present().unwrap();
+            drop(chart);
+            drop(root);
+            ui.allocate_space(ui.available_size());
         });
 
         egui::TopBottomPanel::bottom("cli and stuff")
