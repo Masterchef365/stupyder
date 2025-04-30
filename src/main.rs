@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use egui::ScrollArea;
 use rfd::AsyncFileDialog;
 
 mod code_editor;
@@ -74,12 +75,13 @@ fn main() {
     });
 }
 
-type LoadFileEvent = Arc<Mutex<Option<String>>>;
+type LoadFileEvent = Arc<Mutex<Option<(String, String)>>>;
 
 pub struct TemplateApp {
-    pub save_data: SaveData,
+    save_data: SaveData,
 
-    pub load_file_event: LoadFileEvent,
+    load_file_event: LoadFileEvent,
+    log_rows: Vec<String>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -111,6 +113,7 @@ impl TemplateApp {
         Self {
             save_data,
             load_file_event: Default::default(),
+            log_rows: vec![],
         }
     }
 }
@@ -138,7 +141,7 @@ impl eframe::App for TemplateApp {
                     }
 
                     if ui.button("Save").clicked() {
-                        save_file(&self.save_data.source_code);
+                        save_file(&self.save_data.source_code, &self.save_data.file_name);
                     }
 
                     if ui.button("Load default project").clicked() {
@@ -152,13 +155,31 @@ impl eframe::App for TemplateApp {
             });
         });
 
+        egui::TopBottomPanel::bottom("cli and stuff").show(ctx, |ui| {
+            let n = self.log_rows.len();
+            egui::ScrollArea::vertical().show_rows(ui, 18.0, n, |ui, range| {
+                for row in &self.log_rows[range] {
+                    ui.label(row);
+                }
+            });
+        });
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            code_editor::code_editor_with_autoindent(
-                ui,
-                "the code editor".into(),
-                &mut self.save_data.source_code,
-                "py",
-            )
+            ui.horizontal(|ui| {
+                ui.label("File name: ");
+                ui.text_edit_singleline(&mut self.save_data.file_name);
+            });
+            ScrollArea::vertical()
+                .auto_shrink(false)
+                .id_salt("code")
+                .show(ui, |ui| {
+                    code_editor::code_editor_with_autoindent(
+                        ui,
+                        "the code editor".into(),
+                        &mut self.save_data.source_code,
+                        "py",
+                    )
+                });
         });
     }
 }
@@ -166,7 +187,7 @@ impl eframe::App for TemplateApp {
 impl TemplateApp {
     fn per_frame_handlers(&mut self) {
         if let Some(file) = self.load_file_event.lock().unwrap().take() {
-            self.save_data.source_code = file;
+            (self.save_data.source_code, self.save_data.file_name) = file;
         }
     }
 }
@@ -181,7 +202,7 @@ fn pick_file(event: &LoadFileEvent) {
         wasm_bindgen_futures::spawn_local(async move {
             if let Some(file) = picker.await {
                 if let Ok(code) = String::from_utf8(file.read().await) {
-                    *event.lock().unwrap() = Some(code);
+                    *event.lock().unwrap() = Some((code, file.file_name()));
                 }
             }
         });
@@ -193,17 +214,21 @@ fn pick_file(event: &LoadFileEvent) {
             if let Some(file) = picker.await {
                 match String::from_utf8(file.read().await) {
                     Err(e) => eprintln!("{e}"),
-                    Ok(code) => *event.lock().unwrap() = Some(code),
+                    Ok(code) => *event.lock().unwrap() = Some((code, file.file_name())),
                 }
             }
-        }).detach();
+        })
+        .detach();
     }
 }
 
-fn save_file(code: &str) {
+fn save_file(code: &str, file_name: &str) {
     let code = code.to_string().into_bytes();
 
-    let picker = AsyncFileDialog::new().add_filter("py", &["py"]).save_file();
+    let picker = AsyncFileDialog::new()
+        .set_file_name(file_name)
+        .add_filter("py", &["py"])
+        .save_file();
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -222,6 +247,7 @@ fn save_file(code: &str) {
                     eprintln!("{e}")
                 }
             }
-        }).detach();
+        })
+        .detach();
     }
 }
