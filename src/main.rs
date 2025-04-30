@@ -1,6 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use egui::DragValue;
 use rfd::AsyncFileDialog;
 
 mod code_editor;
@@ -86,15 +85,18 @@ pub struct TemplateApp {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct SaveData {
+    file_name: String,
     source_code: String,
 }
 
 impl Default for SaveData {
     fn default() -> Self {
         Self {
+            file_name: "example_project.py".into(),
             source_code: r#"
-            print("Hello, world!")
-            "#.into()
+print("Hello, world!")
+"#
+            .into(),
         }
     }
 }
@@ -106,7 +108,10 @@ impl TemplateApp {
             .and_then(|storage| eframe::get_value(storage, eframe::APP_KEY))
             .unwrap_or_default();
 
-        Self { save_data, load_file_event: Default::default() }
+        Self {
+            save_data,
+            load_file_event: Default::default(),
+        }
     }
 }
 
@@ -118,6 +123,8 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.per_frame_handlers();
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
@@ -129,6 +136,14 @@ impl eframe::App for TemplateApp {
                     if ui.button("Open").clicked() {
                         pick_file(&self.load_file_event);
                     }
+
+                    if ui.button("Save").clicked() {
+                        save_file(&self.save_data.source_code);
+                    }
+
+                    if ui.button("Load default project").clicked() {
+                        self.save_data = Default::default();
+                    }
                 });
 
                 ui.menu_button("Theme", |ui| {
@@ -138,8 +153,21 @@ impl eframe::App for TemplateApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            code_editor::code_editor_with_autoindent(ui, "the code editor".into(), &mut self.save_data.source_code, "py")
+            code_editor::code_editor_with_autoindent(
+                ui,
+                "the code editor".into(),
+                &mut self.save_data.source_code,
+                "py",
+            )
         });
+    }
+}
+
+impl TemplateApp {
+    fn per_frame_handlers(&mut self) {
+        if let Some(file) = self.load_file_event.lock().unwrap().take() {
+            self.save_data.source_code = file;
+        }
     }
 }
 
@@ -168,6 +196,32 @@ fn pick_file(event: &LoadFileEvent) {
                     Ok(code) => *event.lock().unwrap() = Some(code),
                 }
             }
+        }).detach();
+    }
+}
+
+fn save_file(code: &str) {
+    let code = code.to_string().into_bytes();
+
+    let picker = AsyncFileDialog::new().add_filter("py", &["py"]).save_file();
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Some(file) = picker.await {
+                let _ = file.write(&code).await;
+            }
         });
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        smol::spawn(async move {
+            if let Some(file) = picker.await {
+                if let Err(e) = file.write(&code).await {
+                    eprintln!("{e}")
+                }
+            }
+        }).detach();
     }
 }
