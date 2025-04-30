@@ -27,9 +27,12 @@ rustpython-ndarray = { git = "https://github.com/masterchef365/rustpython-ndarra
 rustpython-vm = "0.4.0"
 rustpython-stdlib = "0.4.0"
 
+rfd = "0.15.3"
+
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"
+smol = "2.0.2"
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]

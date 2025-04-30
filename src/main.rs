@@ -1,4 +1,7 @@
+use std::sync::{Arc, Mutex};
+
 use egui::DragValue;
+use rfd::AsyncFileDialog;
 
 mod code_editor;
 
@@ -72,8 +75,12 @@ fn main() {
     });
 }
 
+type LoadFileEvent = Arc<Mutex<Option<String>>>;
+
 pub struct TemplateApp {
     pub save_data: SaveData,
+
+    pub load_file_event: LoadFileEvent,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -99,7 +106,7 @@ impl TemplateApp {
             .and_then(|storage| eframe::get_value(storage, eframe::APP_KEY))
             .unwrap_or_default();
 
-        Self { save_data }
+        Self { save_data, load_file_event: Default::default() }
     }
 }
 
@@ -119,6 +126,9 @@ impl eframe::App for TemplateApp {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
 
+                    if ui.button("Open").clicked() {
+                        pick_file(&self.load_file_event);
+                    }
                 });
 
                 ui.menu_button("Theme", |ui| {
@@ -129,6 +139,35 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             code_editor::code_editor_with_autoindent(ui, "the code editor".into(), &mut self.save_data.source_code, "py")
+        });
+    }
+}
+
+fn pick_file(event: &LoadFileEvent) {
+    let picker = AsyncFileDialog::new().add_filter("py", &["py"]).pick_file();
+
+    let event = event.clone();
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Some(file) = picker.await {
+                if let Ok(code) = String::from_utf8(file.read().await) {
+                    *event.lock().unwrap() = Some(code);
+                }
+            }
+        });
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        smol::spawn(async move {
+            if let Some(file) = picker.await {
+                match String::from_utf8(file.read().await) {
+                    Err(e) => eprintln!("{e}"),
+                    Ok(code) => *event.lock().unwrap() = Some(code),
+                }
+            }
         });
     }
 }
