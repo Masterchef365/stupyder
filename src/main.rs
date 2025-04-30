@@ -1,8 +1,14 @@
-use std::{cell::RefCell, rc::Rc, sync::{Arc, Mutex}};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 use egui::ScrollArea;
 use rfd::AsyncFileDialog;
-use rustpython_vm::{scope::Scope, Interpreter, PyObjectRef, VirtualMachine, PyRef, builtins::PyCode};
+use rustpython_vm::{
+    builtins::PyCode, scope::Scope, Interpreter, PyObjectRef, PyRef, VirtualMachine,
+};
 
 mod code_editor;
 
@@ -98,6 +104,15 @@ pub struct Kernel {
 pub struct SaveData {
     file_name: String,
     source_code: String,
+    run_schedule: RunSchedule,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq, Default)]
+enum RunSchedule {
+    EachFrame,
+    OnInteract,
+    #[default]
+    Manual,
 }
 
 impl Default for SaveData {
@@ -108,21 +123,22 @@ impl Default for SaveData {
 print("Hello, world!")
 "#
             .into(),
+            run_schedule: RunSchedule::default(),
         }
     }
 }
 
 impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let save_data = cc
+        let save_data: SaveData = cc
             .storage
             .and_then(|storage| eframe::get_value(storage, eframe::APP_KEY))
             .unwrap_or_default();
 
         Self {
+            kernel: Kernel::new_with_code(save_data.source_code.clone()),
             save_data,
             load_file_event: Default::default(),
-            kernel: Kernel::new(),
         }
     }
 }
@@ -136,6 +152,15 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.per_frame_handlers();
+
+        let mut do_run = match self.save_data.run_schedule {
+            RunSchedule::Manual => false,
+            RunSchedule::OnInteract => true,
+            RunSchedule::EachFrame => {
+                ctx.request_repaint();
+                true
+            }
+        };
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -160,19 +185,58 @@ impl eframe::App for TemplateApp {
 
                 ui.menu_button("Theme", |ui| {
                     egui::widgets::global_theme_preference_buttons(ui);
-                })
-            });
-        });
+                });
 
-        egui::TopBottomPanel::bottom("cli and stuff").show(ctx, |ui| {
-            let n = self.kernel.logs.borrow().len();
-            egui::ScrollArea::vertical().show_rows(ui, 18.0, n, |ui, range| {
-                for row in &self.kernel.logs.borrow()[range] {
-                    ui.label(row);
+                ui.menu_button("Run", |ui| {
+                    ui.selectable_value(
+                        &mut self.save_data.run_schedule,
+                        RunSchedule::Manual,
+                        "Manual",
+                    );
+                    ui.selectable_value(
+                        &mut self.save_data.run_schedule,
+                        RunSchedule::OnInteract,
+                        "On any interaction",
+                    );
+                    ui.selectable_value(
+                        &mut self.save_data.run_schedule,
+                        RunSchedule::EachFrame,
+                        "Continuous",
+                    );
+                });
+
+                if ui.button("Step").clicked() {
+                    do_run = true;
                 }
             });
         });
 
+        egui::TopBottomPanel::bottom("cli and stuff")
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Console");
+                    ui.with_layout(egui::Layout::right_to_left(Default::default()), |ui| {
+                        if ui.button("Clear").clicked() {
+                            self.kernel.logs.borrow_mut().clear();
+                        }
+                    });
+                });
+                let n = self.kernel.logs.borrow().len();
+                egui::Frame::canvas(ui.style()).show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("cli")
+                        .stick_to_bottom(true)
+                        .auto_shrink(false)
+                        .show_rows(ui, 18.0, n, |ui, range| {
+                            for row in &self.kernel.logs.borrow()[range] {
+                                ui.label(row);
+                            }
+                        });
+                });
+            });
+
+        let mut resp = None;
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("File name: ");
@@ -182,14 +246,23 @@ impl eframe::App for TemplateApp {
                 .auto_shrink(false)
                 .id_salt("code")
                 .show(ui, |ui| {
-                    code_editor::code_editor_with_autoindent(
+                    resp = Some(code_editor::code_editor_with_autoindent(
                         ui,
                         "the code editor".into(),
                         &mut self.save_data.source_code,
                         "py",
-                    )
+                    ));
                 });
         });
+
+        let resp = resp.unwrap();
+        if resp.changed() {
+            self.kernel.load(self.save_data.source_code.clone());
+        }
+
+        if do_run {
+            self.kernel.run();
+        }
     }
 }
 
@@ -261,27 +334,22 @@ fn save_file(code: &str, file_name: &str) {
     }
 }
 
-
 fn anon_object(vm: &VirtualMachine, name: &str) -> PyObjectRef {
     let py_type = vm.builtins.get_attr("type", vm).unwrap();
     let args = (name, vm.ctx.new_tuple(vec![]), vm.ctx.new_dict());
     py_type.call(args, vm).unwrap()
 }
 
-
 fn install_stdout(vm: &VirtualMachine, logs: Logs) {
     let sys = vm.import("sys", 0).unwrap();
 
     let stdout = anon_object(vm, "InternalStdout");
 
-    let writer = vm.new_function("write", move |s: String| {
-        logs.borrow_mut().push(s)
-    });
+    let writer = vm.new_function("write", move |s: String| logs.borrow_mut().push(s));
 
     stdout.set_attr("write", writer, vm).unwrap();
 
     sys.set_attr("stdout", stdout.clone(), vm).unwrap();
-
 }
 
 impl Kernel {
@@ -296,7 +364,7 @@ impl Kernel {
             */
             vm.add_native_module(
                 "ndarray".to_owned(),
-                Box::new(rustpython_ndarray::make_module)
+                Box::new(rustpython_ndarray::make_module),
             )
         });
 
@@ -318,15 +386,27 @@ impl Kernel {
         }
     }
 
+    pub fn new_with_code(code: String) -> Self {
+        let mut inst = Self::new();
+        inst.load(code);
+        inst
+    }
+
     pub fn load(&mut self, code: String) {
         self.interpreter.enter(|vm| {
-            let code_obj = vm.compile(&code, rustpython_vm::compiler::Mode::Exec, "the code you just wrote in the thingy".to_owned());
+            let code_obj = vm.compile(
+                &code,
+                rustpython_vm::compiler::Mode::Exec,
+                "the code you just wrote in the thingy".to_owned(),
+            );
             match code_obj {
                 Ok(obj) => {
                     self.code_obj = Some(obj);
                 }
                 Err(compile_err) => {
-                    self.logs.borrow_mut().push(format!("Compile error: {:#?}", compile_err));
+                    self.logs
+                        .borrow_mut()
+                        .push(format!("Compile error: {:#?}", compile_err));
                 }
             }
         });
@@ -349,7 +429,7 @@ impl Kernel {
         });
 
         if let Some(e) = error {
-            self.logs.borrow_mut().push(format!("{e}"));
+            self.logs.borrow_mut().push(format!("Error: {e}"));
         }
     }
 }
