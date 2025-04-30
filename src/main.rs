@@ -4,7 +4,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use egui::ScrollArea;
+use egui::{ScrollArea, Vec2};
+use egui_plotter::EguiBackend;
+use plotters::{chart::ChartBuilder, prelude::{IntoDrawingArea, PathElement}, series::LineSeries, style::{Color, IntoFont, BLACK, RED, WHITE}};
 use rfd::AsyncFileDialog;
 use rustpython_vm::{
     builtins::PyCode, scope::Scope, Interpreter, PyObjectRef, PyRef, VirtualMachine,
@@ -130,6 +132,10 @@ print("Hello, world!")
 
 impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        cc.egui_ctx.tessellation_options_mut(|tess_options| {
+            tess_options.feathering = false;
+        });
+
         let save_data: SaveData = cc
             .storage
             .and_then(|storage| eframe::get_value(storage, eframe::APP_KEY))
@@ -211,6 +217,38 @@ impl eframe::App for TemplateApp {
             });
         });
 
+        egui::SidePanel::left("output").resizable(true).show(ctx, |ui| {
+            let root = EguiBackend::new(&*ui).into_drawing_area();
+            root.fill(&WHITE).unwrap();
+            let mut chart = ChartBuilder::on(&root)
+                .caption("y=x^2", ("sans-serif", 50).into_font())
+                .margin(5)
+                .x_label_area_size(30)
+                .y_label_area_size(30)
+                .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)
+                .unwrap();
+
+            //chart.configure_mesh().draw().unwrap();
+
+            chart
+                .draw_series(LineSeries::new(
+                    (-50..=50).map(|x| x as f32 / 50.0).map(|x| (x, x * x)),
+                    &RED,
+                ))
+                .unwrap()
+                .label("y = x^2")
+                .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+
+            chart
+                .configure_series_labels()
+                .background_style(&WHITE.mix(0.8))
+                .border_style(&BLACK)
+                .draw()
+                .unwrap();
+
+            root.present().unwrap();
+        });
+
         egui::TopBottomPanel::bottom("cli and stuff")
             .resizable(true)
             .show(ctx, |ui| {
@@ -243,7 +281,7 @@ impl eframe::App for TemplateApp {
                 ui.text_edit_singleline(&mut self.save_data.file_name);
             });
             ScrollArea::vertical()
-                .auto_shrink(false)
+                .auto_shrink(true)
                 .id_salt("code")
                 .show(ui, |ui| {
                     resp = Some(code_editor::code_editor_with_autoindent(
