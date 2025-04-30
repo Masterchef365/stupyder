@@ -1,7 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, rc::Rc, sync::{Arc, Mutex}};
 
 use egui::ScrollArea;
 use rfd::AsyncFileDialog;
+use rustpython_vm::{scope::Scope, Interpreter, PyObjectRef, VirtualMachine, PyRef, builtins::PyCode};
 
 mod code_editor;
 
@@ -76,12 +77,20 @@ fn main() {
 }
 
 type LoadFileEvent = Arc<Mutex<Option<(String, String)>>>;
+type Logs = Rc<RefCell<Vec<String>>>;
 
 pub struct TemplateApp {
     save_data: SaveData,
 
     load_file_event: LoadFileEvent,
-    log_rows: Vec<String>,
+    kernel: Kernel,
+}
+
+pub struct Kernel {
+    logs: Logs,
+    interpreter: Interpreter,
+    scope: Scope,
+    code_obj: Option<PyRef<PyCode>>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -113,7 +122,7 @@ impl TemplateApp {
         Self {
             save_data,
             load_file_event: Default::default(),
-            log_rows: vec![],
+            kernel: Kernel::new(),
         }
     }
 }
@@ -156,9 +165,9 @@ impl eframe::App for TemplateApp {
         });
 
         egui::TopBottomPanel::bottom("cli and stuff").show(ctx, |ui| {
-            let n = self.log_rows.len();
+            let n = self.kernel.logs.borrow().len();
             egui::ScrollArea::vertical().show_rows(ui, 18.0, n, |ui, range| {
-                for row in &self.log_rows[range] {
+                for row in &self.kernel.logs.borrow()[range] {
                     ui.label(row);
                 }
             });
@@ -249,5 +258,98 @@ fn save_file(code: &str, file_name: &str) {
             }
         })
         .detach();
+    }
+}
+
+
+fn anon_object(vm: &VirtualMachine, name: &str) -> PyObjectRef {
+    let py_type = vm.builtins.get_attr("type", vm).unwrap();
+    let args = (name, vm.ctx.new_tuple(vec![]), vm.ctx.new_dict());
+    py_type.call(args, vm).unwrap()
+}
+
+
+fn install_stdout(vm: &VirtualMachine, logs: Logs) {
+    let sys = vm.import("sys", 0).unwrap();
+
+    let stdout = anon_object(vm, "InternalStdout");
+
+    let writer = vm.new_function("write", move |s: String| {
+        logs.borrow_mut().push(s)
+    });
+
+    stdout.set_attr("write", writer, vm).unwrap();
+
+    sys.set_attr("stdout", stdout.clone(), vm).unwrap();
+
+}
+
+impl Kernel {
+    pub fn new() -> Self {
+        let interpreter = Interpreter::with_init(Default::default(), |vm| {
+            vm.add_native_modules(rustpython_stdlib::get_module_inits());
+            /*
+            vm.add_native_module(
+                "rust_py_module".to_owned(),
+                Box::new(rust_py_module::make_module),
+            );
+            */
+            vm.add_native_module(
+                "ndarray".to_owned(),
+                Box::new(rustpython_ndarray::make_module)
+            )
+        });
+
+        let logs = Logs::default();
+
+        let scope = interpreter.enter(|vm| {
+            // Create scope
+            let scope = vm.new_scope_with_builtins();
+            install_stdout(vm, logs.clone());
+
+            scope
+        });
+
+        Self {
+            scope,
+            interpreter,
+            logs,
+            code_obj: None,
+        }
+    }
+
+    pub fn load(&mut self, code: String) {
+        self.interpreter.enter(|vm| {
+            let code_obj = vm.compile(&code, rustpython_vm::compiler::Mode::Exec, "the code you just wrote in the thingy".to_owned());
+            match code_obj {
+                Ok(obj) => {
+                    self.code_obj = Some(obj);
+                }
+                Err(compile_err) => {
+                    self.logs.borrow_mut().push(format!("Compile error: {:#?}", compile_err));
+                }
+            }
+        });
+    }
+
+    pub fn run(&mut self) {
+        let Some(code) = self.code_obj.clone() else {
+            return;
+        };
+
+        let scope = self.scope.clone();
+        let error = self.interpreter.enter(move |vm| {
+            if let Err(exec_err) = vm.run_code_obj(code, scope) {
+                let mut s = String::new();
+                vm.write_exception(&mut s, &exec_err).unwrap();
+                Some(s)
+            } else {
+                None
+            }
+        });
+
+        if let Some(e) = error {
+            self.logs.borrow_mut().push(format!("{e}"));
+        }
     }
 }
