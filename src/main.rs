@@ -132,13 +132,14 @@ impl Default for SaveData {
             source_code: r#"import pyplotter as plt
 import ndarray as np
 
-x = np.arange(100.)
+x = np.arange(-100., 100.)
 y = x*x
 
-plt.xlim(0.0, x[-1] + 10.0)
-plt.ylim(0.0, 100_000.0)
+plt.title("A graph of X^2")
+plt.xlim(x[0], x[-1] + 10.0)
+plt.ylim(0.0, 10_000.0)
 
-plt.plot(x, y)"#
+plt.plot(x, y, label = "x^2")"#
             .into(),
             run_schedule: RunSchedule::default(),
         }
