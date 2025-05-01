@@ -7,7 +7,12 @@ use std::{
 use egui::{ScrollArea, Vec2};
 use egui_plotter::EguiBackend;
 use plot::PlotCommand;
-use plotters::{chart::ChartBuilder, prelude::{IntoDrawingArea, PathElement}, series::LineSeries, style::{Color, IntoFont, BLACK, RED, WHITE}};
+use plotters::{
+    chart::ChartBuilder,
+    prelude::{IntoDrawingArea, PathElement},
+    series::LineSeries,
+    style::{Color, IntoFont, BLACK, RED, WHITE},
+};
 use rfd::AsyncFileDialog;
 use rustpython_vm::{
     builtins::PyCode, scope::Scope, Interpreter, PyObjectRef, PyRef, VirtualMachine,
@@ -221,40 +226,44 @@ impl eframe::App for TemplateApp {
             });
         });
 
-        egui::SidePanel::right("output").resizable(true).show(ctx, |ui| {
-            let root = EguiBackend::new(&*ui).into_drawing_area();
-            root.fill(&WHITE).unwrap();
-            let mut chart = ChartBuilder::on(&root)
-                .caption("y=x^2", ("sans-serif", 50).into_font())
-                .margin(5)
-                .x_label_area_size(30)
-                .y_label_area_size(30)
-                .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)
-                .unwrap();
+        egui::SidePanel::right("output")
+            .resizable(true)
+            .show(ctx, |ui| {
+                ScrollArea::both().id_salt("output").show(ui, |ui| {
+                    let root = EguiBackend::new(&*ui).into_drawing_area();
+                    root.fill(&WHITE).unwrap();
+                    let mut chart = ChartBuilder::on(&root)
+                        .caption("y=x^2", ("sans-serif", 50).into_font())
+                        .margin(5)
+                        .x_label_area_size(30)
+                        .y_label_area_size(30)
+                        .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)
+                        .unwrap();
 
-            chart.configure_mesh().draw().unwrap();
+                    chart.configure_mesh().draw().unwrap();
 
-            chart
-                .draw_series(LineSeries::new(
-                    (-50..=50).map(|x| x as f32 / 50.0).map(|x| (x, x * x)),
-                    &RED,
-                ))
-                .unwrap()
-                .label("y = x^2")
-                .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+                    chart
+                        .draw_series(LineSeries::new(
+                            (-50..=50).map(|x| x as f32 / 50.0).map(|x| (x, x * x)),
+                            &RED,
+                        ))
+                        .unwrap()
+                        .label("y = x^2")
+                        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
 
-            chart
-                .configure_series_labels()
-                .background_style(&WHITE.mix(0.8))
-                .border_style(&BLACK)
-                .draw()
-                .unwrap();
+                    chart
+                        .configure_series_labels()
+                        .background_style(&WHITE.mix(0.8))
+                        .border_style(&BLACK)
+                        .draw()
+                        .unwrap();
 
-            root.present().unwrap();
-            drop(chart);
-            drop(root);
-            ui.allocate_space(ui.available_size());
-        });
+                    root.present().unwrap();
+                    drop(chart);
+                    drop(root);
+                    ui.allocate_space(ui.available_size());
+                });
+            });
 
         egui::TopBottomPanel::bottom("cli and stuff")
             .resizable(true)
@@ -412,6 +421,10 @@ impl Kernel {
             vm.add_native_module(
                 "ndarray".to_owned(),
                 Box::new(rustpython_ndarray::make_module),
+            );
+            vm.add_native_module(
+                "pyplotter".to_owned(),
+                Box::new(plot::pyplotter::make_module),
             )
         });
 
