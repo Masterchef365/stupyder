@@ -13,6 +13,7 @@ use rustpython_vm::{
 };
 
 mod code_editor;
+mod plot;
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
