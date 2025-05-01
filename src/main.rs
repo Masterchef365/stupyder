@@ -4,9 +4,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use egui::{ScrollArea, Vec2};
-use egui_plotter::EguiBackend;
-use plotters::{chart::ChartBuilder, prelude::{IntoDrawingArea, PathElement}, series::LineSeries, style::{Color, IntoFont, BLACK, RED, WHITE}};
+use egui::{ImageSource, ScrollArea, SizeHint, TextureOptions, Vec2};
+use plotters::{
+    chart::ChartBuilder,
+    prelude::{IntoDrawingArea, PathElement},
+    series::LineSeries,
+    style::{Color, IntoFont, BLACK, RED, WHITE},
+};
+use plotters_svg::SVGBackend;
 use rfd::AsyncFileDialog;
 use rustpython_vm::{
     builtins::PyCode, scope::Scope, Interpreter, PyObjectRef, PyRef, VirtualMachine,
@@ -132,9 +137,11 @@ print("Hello, world!")
 
 impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.tessellation_options_mut(|tess_options| {
+        /*cc.egui_ctx.tessellation_options_mut(|tess_options| {
             tess_options.feathering = false;
-        });
+        });*/
+
+        egui_extras::install_image_loaders(&cc.egui_ctx);
 
         let save_data: SaveData = cc
             .storage
@@ -217,40 +224,69 @@ impl eframe::App for TemplateApp {
             });
         });
 
-        egui::SidePanel::right("output").resizable(true).show(ctx, |ui| {
-            let root = EguiBackend::new(&*ui).into_drawing_area();
-            root.fill(&WHITE).unwrap();
-            let mut chart = ChartBuilder::on(&root)
-                .caption("y=x^2", ("sans-serif", 50).into_font())
-                .margin(5)
-                .x_label_area_size(30)
-                .y_label_area_size(30)
-                .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)
-                .unwrap();
+        egui::SidePanel::right("output")
+            .resizable(true)
+            .show(ctx, |ui| {
+                let time = ui.ctx().input(|i| i.raw.time.unwrap_or(0.0) as f32);
+                let size @ (width, height) = (800, 500);
+                let uri = "thingy.svg";
+                //let uri = format!("thingy{time}.svg");
+                //let uri = uri.as_str();
 
-            chart.configure_mesh().draw().unwrap();
+                if ui
+                    .ctx()
+                    .try_load_image(uri, SizeHint::Size(width, height))
+                    .is_err()
+                {
+                    dbg!(uri);
+                    let mut svg = String::new();
+                    let root = SVGBackend::with_string(&mut svg, size).into_drawing_area();
+                    root.fill(&WHITE).unwrap();
+                    let mut chart = ChartBuilder::on(&root)
+                        .caption("y=x^2", ("sans-serif", 50).into_font())
+                        .margin(5)
+                        .x_label_area_size(30)
+                        .y_label_area_size(30)
+                        .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)
+                        .unwrap();
 
-            chart
-                .draw_series(LineSeries::new(
-                    (-50..=50).map(|x| x as f32 / 50.0).map(|x| (x, x * x)),
-                    &RED,
-                ))
-                .unwrap()
-                .label("y = x^2")
-                .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+                    chart.configure_mesh().draw().unwrap();
 
-            chart
-                .configure_series_labels()
-                .background_style(&WHITE.mix(0.8))
-                .border_style(&BLACK)
-                .draw()
-                .unwrap();
+                    chart
+                        .draw_series(LineSeries::new(
+                            (-50..=50)
+                                .map(|x| x as f32 / 50.0)
+                                .map(|x| (x, x * x + time)),
+                            &RED,
+                        ))
+                        .unwrap()
+                        .label("y = x^2")
+                        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
 
-            root.present().unwrap();
-            drop(chart);
-            drop(root);
-            ui.allocate_space(ui.available_size());
-        });
+                    chart
+                        .configure_series_labels()
+                        .background_style(&WHITE.mix(0.8))
+                        .border_style(&BLACK)
+                        .draw()
+                        .unwrap();
+
+                    root.present().unwrap();
+                    drop(chart);
+                    drop(root);
+
+                    let image = ImageSource::Bytes {
+                        uri: uri.to_owned().into(),
+                        bytes: svg.as_bytes().to_vec().into(),
+                    };
+                    egui::Image::new(image)
+                        .load_for_size(ui.ctx(), Vec2::new(width as f32, height as f32))
+                        .unwrap();
+                }
+                //ui.add(egui::Image::from_uri(uri).fit_to_original_size(1.0));
+                ui.add(egui::Image::from_uri(uri));
+
+                ui.allocate_space(ui.available_size());
+            });
 
         egui::TopBottomPanel::bottom("cli and stuff")
             .resizable(true)
