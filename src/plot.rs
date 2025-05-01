@@ -1,7 +1,7 @@
 use egui_plotter::EguiBackend;
 use plotters::{
     chart::ChartBuilder,
-    prelude::IntoDrawingArea,
+    prelude::{IntoDrawingArea, PathElement},
     series::LineSeries,
     style::{Color, IntoFont, BLACK, RED, WHITE},
 };
@@ -13,6 +13,8 @@ pub mod pyplotter {
     use std::borrow::BorrowMut;
     use std::cell::{LazyCell, RefCell};
 
+    use rustpython_vm::builtins::PyStr;
+    use rustpython_vm::function::KwArgs;
     use rustpython_vm::{PyObjectRef, PyResult, VirtualMachine};
 
     thread_local! {
@@ -20,7 +22,17 @@ pub mod pyplotter {
     }
 
     #[pyfunction]
-    fn plot(x: PyObjectRef, y: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
+    fn plot(
+        x: PyObjectRef,
+        y: PyObjectRef,
+        mut kwargs: KwArgs,
+        vm: &VirtualMachine,
+    ) -> PyResult<()> {
+        let label: String = kwargs
+            .pop_kwarg("label")
+            .and_then(|label| label.downcast::<PyStr>().ok())
+            .map(|py| py.to_string())
+            .unwrap_or_default();
         let x = x
             .downcast::<PyNdArrayFloat32>()
             .map_err(|_| vm.new_runtime_error("X Must be float32".into()))?;
@@ -31,10 +43,23 @@ pub mod pyplotter {
             (**reader).borrow_mut().push(PlotCommand::PlotXY {
                 x: (*x).clone(),
                 y: (*y).clone(),
+                label,
             })
         });
         Ok(())
     }
+
+    #[pyfunction]
+    fn title(title: String, vm: &VirtualMachine) -> PyResult<()> {
+        COMMANDS.with(|reader| {
+            (**reader)
+                .borrow_mut()
+                .push(PlotCommand::Title(title))
+        });
+
+        Ok(())
+    }
+
 
     #[pyfunction]
     fn xlim(left: f32, right: f32, vm: &VirtualMachine) -> PyResult<()> {
@@ -58,16 +83,17 @@ pub mod pyplotter {
         Ok(())
     }
 
-
     pub fn dump_commands() -> Vec<PlotCommand> {
         COMMANDS.with(|r| std::mem::take(&mut *(**r).borrow_mut()))
     }
 }
 
 pub enum PlotCommand {
+    Title(String),
     PlotXY {
         x: PyNdArrayFloat32,
         y: PyNdArrayFloat32,
+        label: String,
     },
     Xlim {
         left: f32,
@@ -87,14 +113,22 @@ pub fn draw_plots(ui: &egui::Ui, commands: &[PlotCommand]) -> Result<(), String>
     let mut plot_right: f32 = 1.0;
     let mut plot_top: f32 = 1.0;
     let mut plot_bottom: f32 = -1.0;
+    let mut plot_title = String::new();
 
     for command in commands {
         match &command {
-            PlotCommand::Ylim { bottom, top } => { plot_bottom = *bottom; plot_top = *top; },
-            PlotCommand::Xlim { left, right } => { plot_left = *left; plot_right = *right; },
-            PlotCommand::PlotXY { x, y } => {
+            PlotCommand::Title(title) => plot_title = title.clone(),
+            PlotCommand::Ylim { bottom, top } => {
+                plot_bottom = *bottom;
+                plot_top = *top;
+            }
+            PlotCommand::Xlim { left, right } => {
+                plot_left = *left;
+                plot_right = *right;
+            }
+            PlotCommand::PlotXY { x, y, label } => {
                 let mut chart = ChartBuilder::on(&root)
-                    .caption("y=x^2", ("sans-serif", 50).into_font())
+                    .caption(&plot_title, ("sans-serif", 25).into_font())
                     .margin(5)
                     .x_label_area_size(30)
                     .y_label_area_size(30)
@@ -119,7 +153,12 @@ pub fn draw_plots(ui: &egui::Ui, commands: &[PlotCommand]) -> Result<(), String>
                             .collect::<Vec<(f32, f32)>>()
                     })
                 });
-                chart.draw_series(LineSeries::new(coords, &RED)).unwrap();
+                chart
+                    .draw_series(LineSeries::new(coords, &RED))
+                    .unwrap()
+                    .label(label);
+                    //.legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+                //legend = false;
 
                 chart
                     .configure_series_labels()
