@@ -28,7 +28,7 @@ pub mod pyplotter {
     }
 }
 
-enum PlotCommand {
+pub enum PlotCommand {
     PlotXY {
         x: PyNdArrayFloat64, 
         y: PyNdArrayFloat64,

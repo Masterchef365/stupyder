@@ -6,6 +6,7 @@ use std::{
 
 use egui::{ScrollArea, Vec2};
 use egui_plotter::EguiBackend;
+use plot::PlotCommand;
 use plotters::{chart::ChartBuilder, prelude::{IntoDrawingArea, PathElement}, series::LineSeries, style::{Color, IntoFont, BLACK, RED, WHITE}};
 use rfd::AsyncFileDialog;
 use rustpython_vm::{
@@ -91,6 +92,7 @@ type Logs = Rc<RefCell<Vec<String>>>;
 pub struct TemplateApp {
     save_data: SaveData,
 
+    plot_info: Vec<PlotCommand>,
     load_file_event: LoadFileEvent,
     kernel: Kernel,
 }
@@ -146,6 +148,7 @@ impl TemplateApp {
             kernel: Kernel::new_with_code(save_data.source_code.clone()),
             save_data,
             load_file_event: Default::default(),
+            plot_info: vec![],
         }
     }
 }
@@ -158,7 +161,7 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.per_frame_handlers();
+        self.per_frame_event_handlers();
 
         let mut do_run = match self.save_data.run_schedule {
             RunSchedule::Manual => false,
@@ -299,17 +302,19 @@ impl eframe::App for TemplateApp {
 
         let resp = resp.unwrap();
         if resp.changed() {
-            self.kernel.load(self.save_data.source_code.clone());
+            //self.kernel.load(self.save_data.source_code.clone());
         }
 
         if do_run {
+            self.kernel.load(self.save_data.source_code.clone());
             self.kernel.run();
+            self.plot_info = plot::pyplotter::dump_commands();
         }
     }
 }
 
 impl TemplateApp {
-    fn per_frame_handlers(&mut self) {
+    fn per_frame_event_handlers(&mut self) {
         if let Some(file) = self.load_file_event.lock().unwrap().take() {
             (self.save_data.source_code, self.save_data.file_name) = file;
         }
