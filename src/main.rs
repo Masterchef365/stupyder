@@ -4,9 +4,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use egui::{ScrollArea, Vec2};
+use egui::{RichText, ScrollArea, Vec2};
 use egui_plotter::EguiBackend;
-use plot::PlotCommand;
+use plot::{draw_plots, PlotCommand};
 use plotters::{
     chart::ChartBuilder,
     prelude::{DrawingBackend, IntoDrawingArea, PathElement},
@@ -131,8 +131,13 @@ impl Default for SaveData {
             file_name: "example_project.py".into(),
             source_code: r#"import pyplotter as plt
 import ndarray as np
+
 x = np.arange(100.)
-y = np.arange(100.)
+y = x*x
+
+plt.xlim(0.0, x[-1] + 10.0)
+plt.ylim(0.0, 100_000.0)
+
 plt.plot(x, y)"#
             .into(),
             run_schedule: RunSchedule::default(),
@@ -222,9 +227,11 @@ impl eframe::App for TemplateApp {
                     );
                 });
 
+                /*
                 if ui.button("Step").clicked() {
                     do_run = true;
                 }
+                */
             });
         });
 
@@ -244,6 +251,10 @@ impl eframe::App for TemplateApp {
             .resizable(true)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
+                    if ui.button(RichText::new("Run ▶").size(30.0).strong()).clicked() {
+                        do_run = true;
+                    }
+
                     ui.heading("Console");
                     ui.with_layout(egui::Layout::right_to_left(Default::default()), |ui| {
                         if ui.button("Clear").clicked() {
@@ -467,52 +478,4 @@ impl Kernel {
             self.logs.borrow_mut().push(format!("Error: {e}"));
         }
     }
-}
-
-fn draw_plots(ui: &egui::Ui, commands: &[PlotCommand]) -> Result<(), String> {
-    let root = EguiBackend::new(&*ui).into_drawing_area();
-    root.fill(&WHITE).unwrap();
-
-    for command in commands {
-        let mut chart = ChartBuilder::on(&root)
-            .caption("y=x^2", ("sans-serif", 50).into_font())
-            .margin(5)
-            .x_label_area_size(30)
-            .y_label_area_size(30)
-            .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)
-            .unwrap();
-
-        chart.configure_mesh().draw().unwrap();
-
-        match command {
-            PlotCommand::PlotXY { x, y } => {
-                if x.arr.read(|x| x.ndim() != 1) {
-                    return Err("X must be 1 dimensional array".to_string());
-                }
-
-                if y.arr.read(|y| y.ndim() != 1) {
-                    return Err("Y must be 1 dimensional array".to_string());
-                }
-
-                let coords = x.arr.read(|x| y.arr.read(|y| x.iter().copied().zip(y.iter().copied()).collect::<Vec<(f32, f32)>>()));
-                chart
-                    .draw_series(LineSeries::new(
-                        coords,
-                        &RED,
-                    ))
-                    .unwrap();
-
-            }
-        }
-
-        chart
-            .configure_series_labels()
-            .background_style(&WHITE.mix(0.8))
-            .border_style(&BLACK)
-            .draw()
-            .unwrap();
-    }
-
-    root.present().unwrap();
-    Ok(())
 }
