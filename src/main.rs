@@ -9,7 +9,7 @@ use egui_plotter::EguiBackend;
 use plot::PlotCommand;
 use plotters::{
     chart::ChartBuilder,
-    prelude::{IntoDrawingArea, PathElement},
+    prelude::{DrawingBackend, IntoDrawingArea, PathElement},
     series::LineSeries,
     style::{Color, IntoFont, BLACK, RED, WHITE},
 };
@@ -129,9 +129,11 @@ impl Default for SaveData {
     fn default() -> Self {
         Self {
             file_name: "example_project.py".into(),
-            source_code: r#"
-print("Hello, world!")
-"#
+            source_code: r#"import pyplotter as plt
+import ndarray as np
+x = np.arange(100.)
+y = np.arange(100.)
+plt.plot(x, y)"#
             .into(),
             run_schedule: RunSchedule::default(),
         }
@@ -230,37 +232,10 @@ impl eframe::App for TemplateApp {
             .resizable(true)
             .show(ctx, |ui| {
                 ScrollArea::both().id_salt("output").show(ui, |ui| {
-                    let root = EguiBackend::new(&*ui).into_drawing_area();
-                    root.fill(&WHITE).unwrap();
-                    let mut chart = ChartBuilder::on(&root)
-                        .caption("y=x^2", ("sans-serif", 50).into_font())
-                        .margin(5)
-                        .x_label_area_size(30)
-                        .y_label_area_size(30)
-                        .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)
-                        .unwrap();
+                    if let Err(e) = draw_plots(ui, &self.plot_info) {
+                        self.kernel.logs.borrow_mut().push(e.to_string());
+                    }
 
-                    chart.configure_mesh().draw().unwrap();
-
-                    chart
-                        .draw_series(LineSeries::new(
-                            (-50..=50).map(|x| x as f32 / 50.0).map(|x| (x, x * x)),
-                            &RED,
-                        ))
-                        .unwrap()
-                        .label("y = x^2")
-                        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
-
-                    chart
-                        .configure_series_labels()
-                        .background_style(&WHITE.mix(0.8))
-                        .border_style(&BLACK)
-                        .draw()
-                        .unwrap();
-
-                    root.present().unwrap();
-                    drop(chart);
-                    drop(root);
                     ui.allocate_space(ui.available_size());
                 });
             });
@@ -492,4 +467,52 @@ impl Kernel {
             self.logs.borrow_mut().push(format!("Error: {e}"));
         }
     }
+}
+
+fn draw_plots(ui: &egui::Ui, commands: &[PlotCommand]) -> Result<(), String> {
+    let root = EguiBackend::new(&*ui).into_drawing_area();
+    root.fill(&WHITE).unwrap();
+
+    for command in commands {
+        let mut chart = ChartBuilder::on(&root)
+            .caption("y=x^2", ("sans-serif", 50).into_font())
+            .margin(5)
+            .x_label_area_size(30)
+            .y_label_area_size(30)
+            .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)
+            .unwrap();
+
+        chart.configure_mesh().draw().unwrap();
+
+        match command {
+            PlotCommand::PlotXY { x, y } => {
+                if x.arr.read(|x| x.ndim() != 1) {
+                    return Err("X must be 1 dimensional array".to_string());
+                }
+
+                if y.arr.read(|y| y.ndim() != 1) {
+                    return Err("Y must be 1 dimensional array".to_string());
+                }
+
+                let coords = x.arr.read(|x| y.arr.read(|y| x.iter().copied().zip(y.iter().copied()).collect::<Vec<(f32, f32)>>()));
+                chart
+                    .draw_series(LineSeries::new(
+                        coords,
+                        &RED,
+                    ))
+                    .unwrap();
+
+            }
+        }
+
+        chart
+            .configure_series_labels()
+            .background_style(&WHITE.mix(0.8))
+            .border_style(&BLACK)
+            .draw()
+            .unwrap();
+    }
+
+    root.present().unwrap();
+    Ok(())
 }

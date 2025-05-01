@@ -3904,7 +3904,7 @@ dependencies = [
 [[package]]
 name = "rustpython-ndarray"
 version = "0.1.0"
-source = "git+https://github.com/masterchef365/rustpython-ndarray.git?branch=main#23d9bc160a3cc036e2e071e878c3fa3bbc68593b"
+source = "git+https://github.com/masterchef365/rustpython-ndarray.git?branch=main#b715b3b4bb1bc3b1f2e9359ee7206f71a83f6bbe"
 dependencies = [
  "crossbeam-utils",
  "ndarray",
