@@ -3960,7 +3960,7 @@ dependencies = [
 [[package]]
 name = "rustpython-plotters"
 version = "0.1.0"
-source = "git+https://github.com/masterchef365/rustpython-plotters.git?branch=main#7e44ef926f4115bca7a09e1457213569edb23de6"
+source = "git+https://github.com/masterchef365/rustpython-plotters.git?branch=main#2fab827a90cc404ae1dde7347e65bc4040702ded"
 dependencies = [
  "plotters",
  "rustpython-vm",
