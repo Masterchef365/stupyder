@@ -247,12 +247,15 @@ impl eframe::App for TemplateApp {
             .resizable(true)
             .show(ctx, |ui| {
                 ScrollArea::both().id_salt("output").show(ui, |ui| {
+                    let (_, rect) = ui.allocate_space(ui.available_size());
                     let area = EguiBackend::new(&*ui).into_drawing_area();
+                    ui.painter().rect_filled(rect, 0.0, Color32::WHITE);
+
                     if let Err(e) = draw_plots(&area, &self.plot_info) {
                         self.kernel.logs.borrow_mut().push(e.to_string());
                     }
 
-                    ui.allocate_space(ui.available_size());
+
                 });
             });
 

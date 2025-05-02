@@ -28,7 +28,8 @@ egui_extras = { version = "0.31.1", features = ["syntect"] }
 
 ndarray = { git = "https://github.com/Masterchef365/ndarray.git", branch = "bounds-check" }
 #ndarray = { path = "../rustpython-ndarray" }
-rustpython-ndarray = { git = "https://github.com/masterchef365/rustpython-ndarray.git", branch = "main" }
+#rustpython-ndarray = { git = "https://github.com/masterchef365/rustpython-ndarray.git", branch = "main" }
+rustpython-ndarray = { path = "../rustpython-ndarray" }
 rustpython-plotters = { path = "../rustpython-plotters" }
 
 rustpython-vm = "0.4.0"
