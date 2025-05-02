@@ -4,9 +4,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use egui::{RichText, ScrollArea, Vec2};
+use egui::{Color32, RichText, ScrollArea, Vec2};
 use egui_plotter::EguiBackend;
-use plot::{draw_plots, PlotCommand};
+use rustpython_plotters::{draw_plots, PlotCommand};
 use plotters::{
     chart::ChartBuilder,
     prelude::{DrawingBackend, IntoDrawingArea, PathElement},
@@ -19,7 +19,6 @@ use rustpython_vm::{
 };
 
 mod code_editor;
-mod plot;
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
@@ -121,6 +120,7 @@ pub struct SaveData {
 enum RunSchedule {
     EachFrame,
     OnInteract,
+    OnCompileSuccess,
     #[default]
     Manual,
 }
@@ -177,6 +177,7 @@ impl eframe::App for TemplateApp {
         self.per_frame_event_handlers();
 
         let mut do_run = match self.save_data.run_schedule {
+            RunSchedule::OnCompileSuccess => false,
             RunSchedule::Manual => false,
             RunSchedule::OnInteract => true,
             RunSchedule::EachFrame => {
@@ -223,6 +224,12 @@ impl eframe::App for TemplateApp {
                     );
                     ui.selectable_value(
                         &mut self.save_data.run_schedule,
+                        RunSchedule::OnCompileSuccess,
+                        "On successful compile",
+                    );
+
+                    ui.selectable_value(
+                        &mut self.save_data.run_schedule,
                         RunSchedule::EachFrame,
                         "Continuous",
                     );
@@ -240,7 +247,8 @@ impl eframe::App for TemplateApp {
             .resizable(true)
             .show(ctx, |ui| {
                 ScrollArea::both().id_salt("output").show(ui, |ui| {
-                    if let Err(e) = draw_plots(ui, &self.plot_info) {
+                    let area = EguiBackend::new(&*ui).into_drawing_area();
+                    if let Err(e) = draw_plots(&area, &self.plot_info) {
                         self.kernel.logs.borrow_mut().push(e.to_string());
                     }
 
@@ -277,7 +285,7 @@ impl eframe::App for TemplateApp {
                 });
             });
 
-        let mut resp = None;
+        let mut editor_resp = None;
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("File name: ");
@@ -287,7 +295,7 @@ impl eframe::App for TemplateApp {
                 .auto_shrink(false)
                 .id_salt("code")
                 .show(ui, |ui| {
-                    resp = Some(code_editor::code_editor_with_autoindent(
+                    editor_resp = Some(code_editor::code_editor_with_autoindent(
                         ui,
                         "the code editor".into(),
                         &mut self.save_data.source_code,
@@ -296,15 +304,20 @@ impl eframe::App for TemplateApp {
                 });
         });
 
-        let resp = resp.unwrap();
-        if resp.changed() {
+        let editor_resp = editor_resp.unwrap();
+        let mut new_code_loaded = false;
+        if editor_resp.changed() {
             //self.kernel.load(self.save_data.source_code.clone());
+            new_code_loaded |= self.kernel.load(self.save_data.source_code.clone());
+        }
+
+        if new_code_loaded && self.save_data.run_schedule == RunSchedule::OnCompileSuccess {
+            do_run = true;
         }
 
         if do_run {
-            self.kernel.load(self.save_data.source_code.clone());
             self.kernel.run();
-            self.plot_info = plot::pyplotter::dump_commands();
+            self.plot_info = rustpython_plotters::dump_commands();
         }
     }
 }
@@ -410,8 +423,8 @@ impl Kernel {
                 Box::new(rustpython_ndarray::make_module),
             );
             vm.add_native_module(
-                "pyplotter".to_owned(),
-                Box::new(plot::pyplotter::make_module),
+                "pyplotters".to_owned(),
+                Box::new(rustpython_plotters::make_module),
             )
         });
 
@@ -439,7 +452,9 @@ impl Kernel {
         inst
     }
 
-    pub fn load(&mut self, code: String) {
+    /// Loads the given python code (compiles it)
+    /// Returns true on success
+    pub fn load(&mut self, code: String) -> bool {
         self.interpreter.enter(|vm| {
             let code_obj = vm.compile(
                 &code,
@@ -449,14 +464,16 @@ impl Kernel {
             match code_obj {
                 Ok(obj) => {
                     self.code_obj = Some(obj);
+                    true
                 }
                 Err(compile_err) => {
                     self.logs
                         .borrow_mut()
                         .push(format!("Compile error: {:#?}", compile_err));
+                    false
                 }
             }
-        });
+        })
     }
 
     pub fn run(&mut self) {

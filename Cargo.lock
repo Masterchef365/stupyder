@@ -3904,7 +3904,7 @@ dependencies = [
 [[package]]
 name = "rustpython-ndarray"
 version = "0.1.0"
-source = "git+https://github.com/masterchef365/rustpython-ndarray.git?branch=main#b715b3b4bb1bc3b1f2e9359ee7206f71a83f6bbe"
+source = "git+https://github.com/masterchef365/rustpython-ndarray.git?branch=main#7c74615b1fdeeb8818081c728b13d4bff235dcdc"
 dependencies = [
  "crossbeam-utils",
  "ndarray",
@@ -3955,6 +3955,14 @@ checksum = "04fcea49a4630a3a5d940f4d514dc4f575ed63c14c3e3ed07146634aed7f67a6"
 dependencies = [
  "memchr",
  "once_cell",
+]
+
+[[package]]
+name = "rustpython-plotters"
+version = "0.1.0"
+dependencies = [
+ "plotters",
+ "rustpython-vm",
 ]
 
 [[package]]
@@ -4469,6 +4477,7 @@ dependencies = [
  "plotters",
  "rfd",
  "rustpython-ndarray",
+ "rustpython-plotters",
  "rustpython-stdlib",
  "rustpython-vm",
  "serde",
