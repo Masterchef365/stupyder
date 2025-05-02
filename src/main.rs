@@ -129,7 +129,7 @@ impl Default for SaveData {
     fn default() -> Self {
         Self {
             file_name: "example_project.py".into(),
-            source_code: r#"import pyplotter as plt
+            source_code: r#"import pyplotters as plt
 import ndarray as np
 
 x = np.arange(-100., 100.)
