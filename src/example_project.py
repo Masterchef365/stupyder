@@ -1,4 +1,3 @@
-import time
 import pyplotters as plt
 import ndarray as np
 
