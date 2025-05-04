@@ -33,5 +33,6 @@ prev = tmp
 plt.title("Wave equation")
 plt.xlim(x[0], x[-1])
 plt.ylim(-1.0, 1.0)
+plt.legend()
 
-plt.plot(x, y)
+plt.plot(x, y, label="Waves")
