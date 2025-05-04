@@ -238,6 +238,10 @@ impl eframe::App for TemplateApp {
                     }
                 });
 
+                ui.with_layout(egui::Layout::right_to_left(Default::default()), |ui| {
+                    ui.hyperlink_to("Source Code", "https://github.com/Masterchef365/stupyder");
+                });
+
                 /*
                 if ui.button("Step").clicked() {
                     do_run = true;
