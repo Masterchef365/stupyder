@@ -4476,6 +4476,7 @@ dependencies = [
  "log",
  "ndarray",
  "plotters",
+ "plotters-svg",
  "rfd",
  "rustpython-ndarray",
  "rustpython-plotters",

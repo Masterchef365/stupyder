@@ -6,6 +6,7 @@ use std::{
 
 use egui::{Color32, RichText, ScrollArea, Vec2};
 use egui_plotter::EguiBackend;
+use plotters_svg::SVGBackend;
 use rustpython_plotters::{draw_plots, PlotCommand};
 use plotters::{
     chart::ChartBuilder,
@@ -230,6 +231,19 @@ impl eframe::App for TemplateApp {
                     }
                 });
 
+                ui.menu_button("Export", |ui| {
+                    if ui.button("SVG").clicked() {
+                        let mut s = String::new();
+                        let svg = SVGBackend::with_string(&mut s, (1000, 1000));
+                        let drawing = svg.into_drawing_area();
+                        if let Err(e) = draw_plots(&drawing, &self.plot_info) {
+                            self.kernel.logs.borrow_mut().push(e.to_string());
+                        }
+                        drop(drawing);
+                        save_file(&s, "output.svg");
+                    }
+                });
+
                 /*
                 if ui.button("Step").clicked() {
                     do_run = true;
@@ -363,7 +377,7 @@ fn save_file(code: &str, file_name: &str) {
 
     let picker = AsyncFileDialog::new()
         .set_file_name(file_name)
-        .add_filter("py", &["py"])
+        //.add_filter("py", &["py"])
         .save_file();
 
     #[cfg(target_arch = "wasm32")]

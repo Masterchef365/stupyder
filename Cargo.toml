@@ -22,7 +22,8 @@ log = "0.4"
 serde = { version = "1", features = ["derive"] }
 
 egui-plotter = "0.4.0"
-plotters= "0.3.7"
+plotters = "0.3.7"
+plotters-svg = "0.3.7"
 
 egui_extras = { version = "0.31.1", features = ["syntect"] }
 
