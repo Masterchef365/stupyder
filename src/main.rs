@@ -118,10 +118,10 @@ pub struct SaveData {
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq, Default)]
 enum RunSchedule {
+    #[default]
     EachFrame,
     OnInteract,
     OnCompileSuccess,
-    #[default]
     Manual,
 }
 
@@ -129,18 +129,7 @@ impl Default for SaveData {
     fn default() -> Self {
         Self {
             file_name: "example_project.py".into(),
-            source_code: r#"import pyplotters as plt
-import ndarray as np
-
-x = np.arange(-100., 100.)
-y = x*x
-
-plt.title("A graph of X^2")
-plt.xlim(x[0], x[-1] + 10.0)
-plt.ylim(0.0, 10_000.0)
-
-plt.plot(x, y, label = "x^2")"#
-            .into(),
+            source_code: include_str!("example_project.py").to_owned(),
             run_schedule: RunSchedule::default(),
         }
     }
@@ -211,7 +200,7 @@ impl eframe::App for TemplateApp {
                     egui::widgets::global_theme_preference_buttons(ui);
                 });
 
-                ui.menu_button("Run", |ui| {
+                ui.menu_button("Run mode", |ui| {
                     ui.selectable_value(
                         &mut self.save_data.run_schedule,
                         RunSchedule::Manual,
@@ -233,6 +222,12 @@ impl eframe::App for TemplateApp {
                         RunSchedule::EachFrame,
                         "Continuous",
                     );
+                });
+
+                ui.menu_button("State", |ui| {
+                    if ui.button("Reset").clicked() {
+                        self.kernel = Kernel::new_with_code(self.save_data.source_code.clone())
+                    }
                 });
 
                 /*
