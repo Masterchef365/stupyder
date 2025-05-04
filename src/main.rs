@@ -225,12 +225,6 @@ impl eframe::App for TemplateApp {
                     );
                 });
 
-                ui.menu_button("State", |ui| {
-                    if ui.button("Reset").clicked() {
-                        self.kernel = Kernel::new_with_code(self.save_data.source_code.clone())
-                    }
-                });
-
                 ui.menu_button("Export", |ui| {
                     if ui.button("SVG").clicked() {
                         let mut s = String::new();
@@ -272,10 +266,16 @@ impl eframe::App for TemplateApp {
             .resizable(true)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new("Run ▶").size(30.0).strong()).clicked() {
+                    if ui.button(RichText::new("Run ▶").size(22.0).strong()).clicked() {
                         do_run = true;
                     }
 
+                    if ui.button(RichText::new("Reset ↺").size(22.0).strong()).clicked() {
+                        self.kernel = Kernel::new_with_code(self.save_data.source_code.clone())
+                    }
+                });
+
+                ui.horizontal(|ui| {
                     ui.heading("Console");
                     ui.with_layout(egui::Layout::right_to_left(Default::default()), |ui| {
                         if ui.button("Clear").clicked() {
