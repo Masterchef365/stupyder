@@ -3904,6 +3904,7 @@ dependencies = [
 [[package]]
 name = "rustpython-ndarray"
 version = "0.1.0"
+source = "git+https://github.com/masterchef365/rustpython-ndarray.git?branch=main#b19c79ca3816f825e737b4319862bd4fd3561d38"
 dependencies = [
  "crossbeam-utils",
  "ndarray",
@@ -3959,6 +3960,7 @@ dependencies = [
 [[package]]
 name = "rustpython-plotters"
 version = "0.1.0"
+source = "git+https://github.com/masterchef365/rustpython-plotters.git?branch=main#cf80bffa216acd170f5b1760e4357898c1335879"
 dependencies = [
  "plotters",
  "rustpython-vm",
